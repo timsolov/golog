@@ -18,15 +18,17 @@ type Transformer struct {
 }
 
 // Transform Transforms all tasks to human readable
-func (transformer *Transformer) Transform() map[string]string {
-	transformedTasks := map[string]string{}
+func (transformer *Transformer) Transform() (transformedTasks map[string]string, totalTime string) {
+	transformedTasks = map[string]string{}
 	tasks := transformer.LoadedTasks.Items
+	var totalSeconds int
 	for _, task := range tasks {
 		if _, inMap := transformedTasks[task.getIdentifier()]; inMap {
 			continue
 		}
 		taskSeconds, isActive := transformer.TrackingToSeconds(task.getIdentifier())
 		humanTime := transformer.SecondsToHuman(taskSeconds)
+		totalSeconds += taskSeconds
 
 		status := ""
 		if isActive {
@@ -37,7 +39,9 @@ func (transformer *Transformer) Transform() map[string]string {
 		transformedTasks[task.getIdentifier()] = transformedTask
 	}
 
-	return transformedTasks
+	totalTime = transformer.SecondsToHuman(totalSeconds)
+
+	return
 }
 
 // SecondsToHuman returns an human readable string from seconds

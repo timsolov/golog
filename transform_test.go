@@ -19,7 +19,7 @@ func TestTransform(t *testing.T) {
 		},
 	}
 	transformer := Transformer{LoadedTasks: tasks}
-	transformedTasks := transformer.Transform()
+	transformedTasks, _ := transformer.Transform()
 	expectedString1 := "2h:2m:4s    identifier-1 "
 	expectedString2 := "1h:0m:0s    identifier-2 "
 	if transformedTasks["identifier-1"] != expectedString1 {
