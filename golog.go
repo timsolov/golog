@@ -1,13 +1,14 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"regexp"
 	"time"
 
-	"github.com/codegangsta/cli"
 	"github.com/mitchellh/go-homedir"
+	"github.com/urfave/cli"
 )
 
 const alphanumericRegex = "^[a-zA-Z0-9_-]*$"
@@ -19,31 +20,35 @@ var transformer = Transformer{}
 var commands = []cli.Command{
 	{
 		Name:         "start",
+		Aliases:      []string{"begin", "b"},
 		Usage:        "Start tracking a given task",
 		Action:       Start,
 		BashComplete: AutocompleteTasks,
 	},
 	{
 		Name:         "stop",
+		Aliases:      []string{"end", "e"},
 		Usage:        "Stop tracking a given task",
 		Action:       Stop,
 		BashComplete: AutocompleteTasks,
 	},
 	{
 		Name:         "status",
-		Usage:        "Give status of all tasks",
+		Usage:        "Give status of task",
 		Action:       Status,
 		BashComplete: AutocompleteTasks,
 	},
 	{
-		Name:   "clear",
-		Usage:  "Clear all data",
-		Action: Clear,
+		Name:    "clear",
+		Aliases: []string{"clear", "c"},
+		Usage:   "Clear all data",
+		Action:  Clear,
 	},
 	{
-		Name:   "list",
-		Usage:  "List all tasks",
-		Action: List,
+		Name:    "list",
+		Aliases: []string{"l"},
+		Usage:   "List all tasks",
+		Action:  List,
 	},
 }
 
@@ -52,6 +57,18 @@ func Start(context *cli.Context) error {
 	identifier := context.Args().First()
 	if !IsValidIdentifier(identifier) {
 		return invalidIdentifier(identifier)
+	}
+
+	// check if this tasks is already active then do nothing
+	if active, err := IsActive(identifier); err != nil {
+		return err
+	} else if active {
+		return errors.New(identifier + " (running)")
+	}
+
+	// stop all active tasks
+	if err := StopAll(); err != nil {
+		return err
 	}
 
 	err := repository.save(Task{Identifier: identifier, Action: "start", At: time.Now().Format(time.RFC3339)})
@@ -65,6 +82,13 @@ func Start(context *cli.Context) error {
 // Stop a given task
 func Stop(context *cli.Context) error {
 	identifier := context.Args().First()
+
+	if len(identifier) == 0 {
+		// stop all active tasks
+		StopAll()
+		return nil
+	}
+
 	if !IsValidIdentifier(identifier) {
 		return invalidIdentifier(identifier)
 	}
@@ -89,7 +113,8 @@ func Status(context *cli.Context) error {
 		return err
 	}
 	transformer.LoadedTasks = tasks.getByIdentifier(identifier)
-	fmt.Println(transformer.Transform()[identifier])
+	tasksTimes, _ := transformer.Transform()
+	fmt.Println(tasksTimes[identifier])
 	return nil
 }
 
@@ -101,8 +126,93 @@ func List(context *cli.Context) error {
 		return err
 	}
 
-	for _, task := range transformer.Transform() {
-		fmt.Println(task)
+	var uitems []string
+	for _, task := range transformer.LoadedTasks.Items {
+		unique := true
+		for _, u := range uitems {
+			if u == task.getIdentifier() {
+				unique = false
+				break
+			}
+		}
+		if unique {
+			uitems = append(uitems, task.getIdentifier())
+		}
+	}
+
+	list, total := transformer.Transform()
+
+	for _, identifier := range uitems {
+		fmt.Println(list[identifier])
+	}
+
+	fmt.Println()
+	fmt.Println("Total: ", total)
+	return nil
+}
+
+// ActiveTasks active tasks list
+func ActiveTasks() (list []string, err error) {
+
+	tasks, err := repository.load()
+	if err != nil {
+		return
+	}
+
+	status := make(map[string]bool)
+	order := make([]string, 0)
+
+	for _, task := range tasks.Items {
+		switch task.getAction() {
+		case "start":
+			if _, in := status[task.getIdentifier()]; !in {
+				order = append(order, task.getIdentifier())
+			}
+			status[task.getIdentifier()] = true
+		case "stop":
+			if _, in := status[task.getIdentifier()]; !in {
+				order = append(order, task.getIdentifier())
+			}
+			status[task.getIdentifier()] = false
+		}
+	}
+
+	for _, identifier := range order {
+		if status[identifier] {
+			list = append(list, identifier)
+		}
+	}
+
+	return
+}
+
+// IsActive check if task is active
+func IsActive(identifier string) (bool, error) {
+	list, err := ActiveTasks()
+	if err != nil {
+		return false, err
+	}
+	for _, i := range list {
+		if i == identifier {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// StopAll stops all active tasks
+func StopAll() error {
+	// check if we have started tasks we have to stop them
+	activeList, err := ActiveTasks()
+	if err != nil {
+		return err
+	}
+	// stop active tasks
+	for _, task := range activeList {
+		if err := repository.save(Task{Identifier: task, Action: "stop", At: time.Now().Format(time.RFC3339)}); err != nil {
+			return err
+		}
+		fmt.Println("Stopped tracking ", task)
 	}
 	return nil
 }
