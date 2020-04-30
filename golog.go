@@ -40,7 +40,7 @@ var commands = []cli.Command{
 	},
 	{
 		Name:    "clear",
-		Aliases: []string{"clear", "c"},
+		Aliases: []string{"clean", "c"},
 		Usage:   "Clear all data",
 		Action:  Clear,
 	},
@@ -146,8 +146,12 @@ func List(context *cli.Context) error {
 		fmt.Println(list[identifier])
 	}
 
-	fmt.Println()
-	fmt.Println("Total: ", total)
+	if len(uitems) > 0 {
+		fmt.Println()
+		fmt.Println("Total: ", total)
+	} else {
+		fmt.Println("Time didn't tracked")
+	}
 	return nil
 }
 
@@ -262,7 +266,25 @@ func main() {
 	app.Version = "0.1"
 	app.EnableBashCompletion = true
 	app.Commands = commands
-	err := app.Run(os.Args)
+
+	var err error
+
+	switch len(os.Args) {
+	case 1:
+		// without arguments default List
+		err = List(nil)
+	case 2:
+		// if first argument is not a command
+		// use it as task name to start
+		if nil == app.Command(os.Args[1]) {
+			err = app.Run([]string{os.Args[0], "start", os.Args[1]})
+		} else { // default
+			err = app.Run(os.Args)
+		}
+	default:
+		err = app.Run(os.Args)
+	}
+
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
